@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ПР1 — WebAR на model-viewer</title>
+
+  <!-- Шрифт. Если Google Fonts не загрузится, возьмётся системный -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Веб-компонент model-viewer: подключается как ES-модуль с CDN Google -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+  <!-- Запасной вариант, если CDN Google не открывается (закомментируй строку выше и раскомментируй эту):
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer.min.js"></script>
+  -->
+
+  <style>
+    :root {
+      --bg: #E3E7EC;      /* фон страницы — холодный студийный серый */
+      --stage: #F4F6F8;   /* фон области с моделью */
+      --ink: #18202A;     /* основной текст */
+      --muted: #5A6573;   /* второстепенный текст */
+      --accent: #1F4FD1;  /* кнопка AR */
+      --ok: #1E7F4E;
+      --warn: #A15C00;
+      --err: #B3261E;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px 16px 32px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: clamp(1.25rem, 4vw, 1.75rem);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+    }
+
+    header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    model-viewer {
+      display: block;
+      width: 100%;
+      height: 68vh;
+      height: 68svh;
+      min-height: 360px;
+      margin-top: 16px;
+      background-color: var(--stage);
+      border-radius: 20px;
+    }
+
+    /* Своя кнопка AR. model-viewer сам показывает её только там, где AR реально доступен */
+    .ar-button {
+      position: absolute;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .ar-button:focus-visible {
+      outline: 3px solid var(--ink);
+      outline-offset: 3px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 0;
+      font-size: 0.95rem;
+    }
+
+    .dot {
+      flex: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .status[data-state="ok"] .dot { background: var(--ok); }
+    .status[data-state="warn"] .dot { background: var(--warn); }
+    .status[data-state="error"] .dot { background: var(--err); }
+
+    footer {
+      max-width: 70ch;
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    footer p { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Практическая работа №1. WebAR на model-viewer</h1>
+      <p>Кузнецова А.С., ИКБО-30-24</p>
+    </header>
+
+    <main>
+      <model-viewer
+        id="viewer"
+        src="models/model.glb"
+        ios-src="models/model.usdz"
+        alt="Наручные часы Chronograph Watch с золотым корпусом"
+
+        ar
+        ar-modes="webxr scene-viewer quick-look"
+        ar-placement="floor"
+        ar-scale="auto"
+
+        environment-image="hdri/environment.hdr"
+        exposure="1"
+        tone-mapping="neutral"
+        shadow-intensity="1"
+        shadow-softness="0.8"
+
+        camera-controls
+        touch-action="pan-y"
+        auto-rotate
+        autoplay
+      >
+        <button slot="ar-button" class="ar-button">Открыть в AR</button>
+      </model-viewer>
+
+      <p class="status" id="status" data-state="wait" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="status-text">Загружаю модель…</span>
+      </p>
+    </main>
+
+    <footer>
+      <p>Модель: Chronograph Watch, Eric Chadwick, © 2025 Darmstadt Graphics Group GmbH, CC BY 4.0 (Khronos glTF Sample Assets).</p>
+      <p>Освещение: HDRI Photo Studio Loft Hall, Sergej Majboroda, Poly Haven, CC0.</p>
+    </footer>
+  </div>
+
+  <script>
+    const viewer = document.getElementById('viewer');
+    const statusEl = document.getElementById('status');
+    const statusText = document.getElementById('status-text');
+
+    // Выводит сообщение под моделью и дублирует его в консоль (удобно при удалённой отладке)
+    function setStatus(text, state) {
+      statusText.textContent = text;
+      statusEl.dataset.state = state;
+      console.log('[model-viewer]', text);
+    }
+
+    // Для тестов: параметр ?ar=scene-viewer или ?ar=webxr в адресе принудительно задаёт режим AR
+    const forcedMode = new URLSearchParams(location.search).get('ar');
+    if (forcedMode) {
+      viewer.setAttribute('ar-modes', forcedMode);
+      console.log('[model-viewer] ar-modes задан вручную:', forcedMode);
+    }
+
+    // Если в системе включено «уменьшение движения», модель сама не вращается
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      viewer.removeAttribute('auto-rotate');
+    }
+
+    function reportArSupport() {
+      if (viewer.canActivateAR) {
+        setStatus('Модель загружена. AR доступен — нажми «Открыть в AR».', 'ok');
+      } else {
+        setStatus('Модель загружена. AR на этом устройстве недоступен: открой страницу на телефоне (Android — Chrome, iPhone — Safari).', 'warn');
+      }
+    }
+
+    viewer.addEventListener('load', () => {
+      // Поддержка AR определяется асинхронно, поэтому проверяем с небольшой задержкой
+      setTimeout(reportArSupport, 500);
+    });
+
+    viewer.addEventListener('error', (event) => {
+      setStatus('Не удалось загрузить модель. Проверь путь к файлу в src и открой консоль (F12).', 'error');
+      console.error(event.detail);
+    });
+
+    viewer.addEventListener('ar-status', (event) => {
+      const messages = {
+        'session-started': ['AR запущен. Наведи камеру на пол и медленно поводи телефоном.', 'ok'],
+        'object-placed': ['Модель размещена. Двигай её пальцем, поворачивай двумя пальцами.', 'ok'],
+        'not-presenting': ['AR-сессия завершена.', 'wait'],
+        'failed': ['Не удалось запустить AR. Проверь, что установлены «Сервисы Google Play для AR» (ARCore).', 'error']
+      };
+      const [text, state] = messages[event.detail.status] || [event.detail.status, 'wait'];
+      setStatus(text, state);
+    });
+  </script>
+</body>
+</html>
