@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ПР2 — трекинг изображений на MindAR</title>
+
+  <!-- A-Frame: декларативный фреймворк для 3D-сцен поверх three.js -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <!-- MindAR: трекинг изображений, интеграция с A-Frame -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+
+    /* Плашка поверх видео с камеры */
+    .hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(24, 32, 42, 0.78);
+      color: #F4F1EA;
+      font: 600 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #A15C00; }
+    .hud[data-state="found"] .dot { background: #1E7F4E; }
+    .hud[data-state="error"] .dot { background: #B3261E; }
+    .hud span { flex: 1; }
+    .hud a { color: #C9A227; text-decoration: none; white-space: nowrap; }
+  </style>
+
+  <script>
+    // Карта окружения для металлических материалов.
+    // Без неё золотой корпус часов выглядит почти чёрным: металл освещается
+    // в первую очередь тем, что в нём отражается. Строим простую «студию»
+    // из светящихся панелей и превращаем её в карту окружения (PMREM).
+    AFRAME.registerComponent('studio-env', {
+      init: function () {
+        const sceneEl = this.el;
+        const apply = () => {
+          const THREE = AFRAME.THREE;
+          const env = new THREE.Scene();
+          env.add(new THREE.Mesh(
+            new THREE.BoxGeometry(10, 10, 10),
+            new THREE.MeshBasicMaterial({ color: 0x3a3a3a, side: THREE.BackSide })
+          ));
+          const panel = (w, h, x, y, z, k) => {
+            const m = new THREE.Mesh(
+              new THREE.PlaneGeometry(w, h),
+              new THREE.MeshBasicMaterial({ color: new THREE.Color(k, k, k) })
+            );
+            m.position.set(x, y, z);
+            m.lookAt(0, 0, 0);
+            env.add(m);
+          };
+          panel(6, 2, 0, 4.9, 0, 3);     // верхний софтбокс
+          panel(3, 4, 4.9, 1, 0, 2);     // правый
+          panel(3, 4, -4.9, 0, 2, 1.2);  // левый, слабее
+          const pmrem = new THREE.PMREMGenerator(sceneEl.renderer);
+          sceneEl.object3D.environment = pmrem.fromScene(env, 0.04).texture;
+          pmrem.dispose();
+        };
+        if (sceneEl.hasLoaded) apply(); else sceneEl.addEventListener('loaded', apply);
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="hud" id="hud" data-state="wait">
+    <div class="dot"></div>
+    <span id="status">Запускаю камеру…</span>
+    <a href="marker.png" target="_blank">Маркер</a>
+    <a href="../">Задание 1</a>
+  </div>
+
+  <a-scene
+    mindar-image="imageTargetSrc: targets.mind; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001"
+    studio-env
+    color-space="sRGB"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <a-asset-item id="watch" src="../models/model.glb"></a-asset-item>
+    </a-assets>
+
+    <!-- Базовое освещение сцены -->
+    <a-entity light="type: ambient; intensity: 0.6"></a-entity>
+    <a-entity light="type: directional; intensity: 2" position="1 2 2"></a-entity>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- Якорь: всё внутри появляется, когда камера видит маркер №0 из targets.mind.
+         Ширина маркера в сцене = 1 единица. -->
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <!-- Поднимаем модель над маркером и медленно вращаем -->
+      <a-entity
+        position="0 0 0.15"
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 12000; easing: linear">
+        <!-- Часы в реальном размере ~5 см, поэтому увеличиваем в 5 раз.
+             Если маркер лежит на столе, а не стоит на экране, добавь rotation="90 0 0" -->
+        <a-gltf-model src="#watch" scale="5 5 5"></a-gltf-model>
+      </a-entity>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const hud = document.getElementById('hud');
+    const statusEl = document.getElementById('status');
+    const sceneEl = document.querySelector('a-scene');
+    const targetEl = document.getElementById('target');
+
+    function setStatus(text, state) {
+      statusEl.textContent = text;
+      hud.dataset.state = state;
+      console.log('[MindAR]', text);
+    }
+
+    sceneEl.addEventListener('arReady', () => {
+      setStatus('Камера готова. Наведи её на маркер.', 'wait');
+    });
+    sceneEl.addEventListener('arError', () => {
+      setStatus('Нет доступа к камере. Разреши его в настройках браузера.', 'error');
+    });
+    targetEl.addEventListener('targetFound', () => {
+      setStatus('Маркер найден.', 'found');
+    });
+    targetEl.addEventListener('targetLost', () => {
+      setStatus('Маркер потерян. Наведи камеру снова.', 'wait');
+    });
+  </script>
+</body>
+</html>
