@@ -105,9 +105,10 @@
       <a-entity
         position="0 0 0.15"
         animation="property: rotation; to: 0 360 0; loop: true; dur: 12000; easing: linear">
-        <!-- Часы в реальном размере ~5 см, поэтому увеличиваем в 5 раз.
+        <!-- Габариты модели ~4,4 × 5,8 × 7 единиц, а ширина маркера = 1 единица,
+             поэтому уменьшаем: при 0.12 часы занимают около 0,7 ширины маркера.
              Если маркер лежит на столе, а не стоит на экране, добавь rotation="90 0 0" -->
-        <a-gltf-model src="#watch" scale="5 5 5"></a-gltf-model>
+        <a-gltf-model src="#watch" scale="0.12 0.12 0.12"></a-gltf-model>
       </a-entity>
     </a-entity>
   </a-scene>
