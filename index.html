@@ -119,10 +119,41 @@
     }
 
     footer p { margin: 4px 0; }
+
+    /* Переключатель заданий 1–4 (одинаковый на всех страницах) */
+    .tasks {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 16px;
+      padding: 4px 4px 4px 12px;
+      border-radius: 999px;
+      background: rgba(24, 32, 42, 0.07);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .tasks span { margin-right: 6px; color: #5A6573; }
+    .tasks a {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: #18202A;
+      text-decoration: none;
+    }
+    .tasks a[aria-current="page"] { background: #18202A; color: #F4F1EA; }
   </style>
 </head>
 <body>
   <div class="page">
+    <nav class="tasks" aria-label="Переключение между заданиями">
+      <span>Задания</span>
+      <a href="./" aria-current="page">1</a>
+      <a href="zadanie2/">2</a>
+      <a href="zadanie3/">3</a>
+      <a href="zadanie4/">4</a>
+    </nav>
     <header>
       <h1>Практическая работа №1. WebAR на model-viewer</h1>
       <p>Кузнецова А.С., ИКБО-30-24</p>

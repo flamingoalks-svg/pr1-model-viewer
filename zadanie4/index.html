@@ -54,8 +54,6 @@
     .dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: #A15C00; }
     [data-state="ok"] .dot { background: #1E7F4E; }
     [data-state="error"] .dot { background: #B3261E; }
-    .nav { margin-top: 18px; display: flex; gap: 16px; }
-    .nav a { color: #8A6D0B; font-weight: 600; text-decoration: none; }
 
     /* Интерфейс поверх камеры во время AR (WebXR DOM Overlay) */
     #overlay { display: none; }
@@ -92,6 +90,30 @@
       color: var(--light);
       font: 600 14px Manrope, system-ui, sans-serif;
     }
+
+    /* Переключатель заданий 1–4 (одинаковый на всех страницах) */
+    .tasks {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 16px;
+      padding: 4px 4px 4px 12px;
+      border-radius: 999px;
+      background: rgba(24, 32, 42, 0.07);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .tasks span { margin-right: 6px; color: #5A6573; }
+    .tasks a {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: #18202A;
+      text-decoration: none;
+    }
+    .tasks a[aria-current="page"] { background: #18202A; color: #F4F1EA; }
   </style>
 
   <!-- Three.js подключается как ES-модуль; importmap задаёт, откуда брать 'three' -->
@@ -101,6 +123,13 @@
 </head>
 <body>
   <div class="page">
+    <nav class="tasks" aria-label="Переключение между заданиями">
+      <span>Задания</span>
+      <a href="../">1</a>
+      <a href="../zadanie2/">2</a>
+      <a href="../zadanie3/">3</a>
+      <a href="../zadanie4/" aria-current="page">4</a>
+    </nav>
     <h1>Практическая работа №4. AR-сцена на Three.js с hit-test</h1>
     <p class="author">Кузнецова А.С., ИКБО-30-24</p>
 
@@ -112,11 +141,6 @@
       <span class="dot"></span><span id="statusText">Проверяю поддержку WebXR…</span>
     </p>
 
-    <div class="nav">
-      <a href="../">Задание 1</a>
-      <a href="../zadanie2/">Задание 2</a>
-      <a href="../zadanie3/">Задание 3</a>
-    </div>
   </div>
 
   <!-- Этот блок браузер показывает поверх камеры во время AR-сессии -->

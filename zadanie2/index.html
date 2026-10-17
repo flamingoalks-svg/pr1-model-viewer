@@ -13,6 +13,11 @@
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; }
 
+    /* Контейнер AR-сцены на весь экран. MindAR кладёт в него видео с камеры
+       и подгоняет размер сцены под пропорции видео. Сцена должна быть embedded:
+       иначе A-Frame растягивает картинку под окно, и модели получаются сплюснутыми. */
+    .ar-container { position: fixed; inset: 0; overflow: hidden; }
+
     /* Плашка поверх видео с камеры */
     .hud {
       position: fixed;
@@ -34,6 +39,27 @@
     .hud[data-state="error"] .dot { background: #B3261E; }
     .hud span { flex: 1; }
     .hud a { color: #C9A227; text-decoration: none; white-space: nowrap; }
+
+    /* Переключатель заданий 1–4 (одинаковый на всех страницах) */
+    .hud { flex-wrap: wrap; }
+    .tasks {
+      flex-basis: 100%;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(244, 241, 234, 0.15);
+    }
+    .tasks span { margin-right: 6px; opacity: 0.7; }
+    .hud .tasks a {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      color: #F4F1EA;
+    }
+    .hud .tasks a[aria-current="page"] { background: #C9A227; color: #18202A; }
   </style>
 
   <script>
@@ -77,10 +103,18 @@
     <div class="dot"></div>
     <span id="status">Запускаю камеру…</span>
     <a href="marker.png" target="_blank">Маркер</a>
-    <a href="../">Задание 1</a>
+    <nav class="tasks" aria-label="Переключение между заданиями">
+        <span>Задания</span>
+        <a href="../">1</a>
+        <a href="../zadanie2/" aria-current="page">2</a>
+        <a href="../zadanie3/">3</a>
+        <a href="../zadanie4/">4</a>
+    </nav>
   </div>
 
+  <div class="ar-container">
   <a-scene
+    embedded
     mindar-image="imageTargetSrc: targets.mind; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001"
     studio-env
     color-space="sRGB"
@@ -112,6 +146,7 @@
       </a-entity>
     </a-entity>
   </a-scene>
+  </div>
 
   <script>
     const hud = document.getElementById('hud');
