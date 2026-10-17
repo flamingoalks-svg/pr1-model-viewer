@@ -37,6 +37,10 @@
       border-radius: 20px;
       background: #F2F4F7;
     }
+    /* Во время AR у холста не должно быть своего фона: иначе в эмуляторе
+       он закрывает виртуальную комнату (на телефоне холст поверх камеры не показывается) */
+    body.xr-active #preview { background: transparent; border-radius: 0; }
+
     .start {
       display: block;
       width: 100%;
@@ -315,6 +319,7 @@
         hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
 
         overlay.classList.add('active');
+        document.body.classList.add('xr-active');
         preview.visible = false;
         setHud('Медленно поводи телефоном над полом', 'wait');
 
@@ -332,6 +337,7 @@
       reticle.visible = false;
       clearPlaced();
       overlay.classList.remove('active');
+      document.body.classList.remove('xr-active');
       preview.visible = true;
       sun.target.position.set(0, 0, 0);
       sun.position.copy(SUN_OFFSET);
