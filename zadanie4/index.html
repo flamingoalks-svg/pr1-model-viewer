@@ -287,7 +287,8 @@
     checkSupport();
 
     // ---------- Запуск AR-сессии ----------
-    let hitTestSource = null;
+    let hitTestSource = null;           // луч из центра экрана телефона (или из центра взгляда шлема)
+    let controllerHitTestSource = null; // луч из контроллера — только у шлемов (Quest) и в эмуляторе
     let referenceSpace = null;
 
     startBtn.addEventListener('click', async () => {
@@ -323,6 +324,10 @@
         preview.visible = false;
         setHud('Медленно поводи телефоном над полом', 'wait');
 
+        // Если есть контроллеры (шлем или эмулятор), целимся контроллером, как лазерной указкой
+        session.addEventListener('inputsourceschange', updateControllerHitTest);
+        updateControllerHitTest();
+
         session.addEventListener('end', onSessionEnd);
       } catch (err) {
         console.error(err);
@@ -330,9 +335,26 @@
       }
     });
 
+    // Ищем правый контроллер (или любой) и создаём hit-test из его луча (targetRaySpace).
+    // На телефоне контроллеров нет: касание экрана — это не 'tracked-pointer', поэтому там
+    // остаётся луч из центра экрана.
+    async function updateControllerHitTest() {
+      const session = renderer.xr.getSession();
+      if (!session) return;
+      const pointers = [...session.inputSources].filter((s) => s.targetRayMode === 'tracked-pointer');
+      const source = pointers.find((s) => s.handedness === 'right') || pointers[0];
+      if (controllerHitTestSource) controllerHitTestSource.cancel();
+      controllerHitTestSource = null;
+      if (source) {
+        controllerHitTestSource = await session.requestHitTestSource({ space: source.targetRaySpace });
+      }
+    }
+
     function onSessionEnd() {
       if (hitTestSource) hitTestSource.cancel();
+      if (controllerHitTestSource) controllerHitTestSource.cancel();
       hitTestSource = null;
+      controllerHitTestSource = null;
       referenceSpace = null;
       reticle.visible = false;
       clearPlaced();
@@ -423,7 +445,7 @@
     renderer.setAnimationLoop((time, frame) => {
       if (frame && hitTestSource) {
         // Результаты hit-test для текущего кадра: пересечения луча с реальными поверхностями
-        const results = frame.getHitTestResults(hitTestSource);
+        const results = frame.getHitTestResults(controllerHitTestSource || hitTestSource);
         if (results.length > 0) {
           // Поза ближайшей поверхности в нашей системе отсчёта
           const pose = results[0].getPose(referenceSpace);
