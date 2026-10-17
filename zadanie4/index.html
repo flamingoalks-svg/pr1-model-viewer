@@ -298,7 +298,7 @@
         //    local-floor и dom-overlay — желательные: если устройство их не даёт, сессия всё равно запустится.
         const session = await navigator.xr.requestSession('immersive-ar', {
           requiredFeatures: ['hit-test'],
-          optionalFeatures: ['local-floor', 'dom-overlay'],
+          optionalFeatures: ['local-floor', 'dom-overlay', 'anchors'],
           domOverlay: { root: overlay }
         });
 
@@ -390,9 +390,15 @@
       return up.y > 0.8;
     }
 
+    // Тап только ставит «заявку» на размещение. Сам стул ставится в цикле отрисовки:
+    // якорь (XRAnchor) можно создать только из результата hit-test текущего кадра.
+    let placeRequested = false;
     function onSelect() {
       if (!reticle.visible || !surfaceIsHorizontal()) return;
+      placeRequested = true;
+    }
 
+    function placeChair(hitResult) {
       const chair = createChair();
       // Берём точку касания из матрицы маркера (координаты в referenceSpace)
       reticle.matrix.decompose(tmpPos, tmpQuat, tmpScale);
@@ -410,13 +416,26 @@
       scene.add(chair);
       placed.push(chair);
 
+      // Якорь WebXR (Anchors API): устройство само отслеживает эту точку реального мира
+      // и уточняет её положение, когда уточняет карту комнаты. Без якоря объект стоит
+      // в координатах referenceSpace, и при пересчёте трекинга он может «уплыть».
+      if (hitResult.createAnchor) {
+        hitResult.createAnchor().then((anchor) => {
+          if (placed.includes(chair)) chair.userData.anchor = anchor;
+          else anchor.delete();
+        }).catch((err) => console.warn('[WebXR] якорь не создан', err));
+      }
+
       // Направленный свет «переезжает» к последнему стулу, чтобы тень попадала в его область
       sun.target.position.copy(tmpPos);
       sun.position.copy(tmpPos).add(SUN_OFFSET);
     }
 
     function clearPlaced() {
-      for (const obj of placed) scene.remove(obj);
+      for (const obj of placed) {
+        scene.remove(obj);
+        if (obj.userData.anchor) obj.userData.anchor.delete();
+      }
       placed.length = 0;
     }
 
@@ -452,6 +471,8 @@
           reticle.visible = true;
           reticle.matrix.fromArray(pose.transform.matrix);
 
+          if (placeRequested && surfaceIsHorizontal()) placeChair(results[0]);
+
           if (surfaceIsHorizontal()) {
             ringMaterial.color.set(0xffffff);
             setHud('Поверхность найдена. Нажми на экран, чтобы поставить стул.', 'ok');
@@ -462,6 +483,19 @@
         } else {
           reticle.visible = false;
           setHud('Ищу поверхность… Медленно поводи телефоном над полом.', 'wait');
+        }
+
+        placeRequested = false;
+
+        // Стулья с якорем каждый кадр берут позицию из якоря
+        for (const obj of placed) {
+          const anchor = obj.userData.anchor;
+          if (!anchor || !frame.trackedAnchors || !frame.trackedAnchors.has(anchor)) continue;
+          const anchorPose = frame.getPose(anchor.anchorSpace, referenceSpace);
+          if (anchorPose) {
+            const p = anchorPose.transform.position;
+            obj.position.set(p.x, p.y, p.z);
+          }
         }
 
         // Пульсация внешнего кольца маркера
