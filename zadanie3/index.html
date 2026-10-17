@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ПР3 — AR-маска на MindAR Face Tracking</title>
+
+  <!-- A-Frame: декларативный фреймворк для 3D-сцен поверх three.js -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <!-- MindAR: трекинг лица (нейросеть MediaPipe Face Mesh, 468 ключевых точек), интеграция с A-Frame -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
+
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+
+    /* Плашка поверх видео с камеры (как в задании 2) */
+    .hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(24, 32, 42, 0.78);
+      color: #F4F1EA;
+      font: 600 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #A15C00; }
+    .hud[data-state="found"] .dot { background: #1E7F4E; }
+    .hud[data-state="error"] .dot { background: #B3261E; }
+    .hud span { flex: 1; }
+    .hud a { color: #C9A227; text-decoration: none; white-space: nowrap; }
+
+    /* Переключатели фильтров внизу экрана */
+    .controls {
+      position: fixed;
+      left: 50%;
+      bottom: calc(20px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 8px;
+    }
+    .controls button {
+      padding: 10px 16px;
+      border: 2px solid #C9A227;
+      border-radius: 999px;
+      background: rgba(24, 32, 42, 0.78);
+      color: #F4F1EA;
+      font: 600 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      cursor: pointer;
+    }
+    .controls button[aria-pressed="false"] { border-color: rgba(244, 241, 234, 0.3); opacity: 0.7; }
+  </style>
+
+  <script>
+    // Окклюдер (невидимое тело): пишет только глубину, но не цвет.
+    // Им «прячем» части виртуальных объектов, которые в реальности были бы
+    // закрыты головой: дужки очков за висками, звёздочки, пролетающие за затылком.
+    // renderOrder = -1 — окклюдер рисуется раньше остальных объектов,
+    // иначе объекты успеют нарисоваться до того, как он заполнит буфер глубины.
+    AFRAME.registerComponent('occluder', {
+      init: function () {
+        const THREE = AFRAME.THREE;
+        const apply = () => {
+          this.el.object3D.traverse((o) => {
+            if (o.isMesh) {
+              o.material = new THREE.MeshBasicMaterial({ colorWrite: false });
+              o.renderOrder = -1;
+            }
+          });
+        };
+        apply();
+        this.el.addEventListener('object3dset', apply);
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="hud" id="hud" data-state="wait">
+    <div class="dot"></div>
+    <span id="status">Запускаю камеру…</span>
+    <a href="../zadanie2/">Задание 2</a>
+    <a href="../zadanie4/">Задание 4</a>
+  </div>
+
+  <div class="controls">
+    <button id="btnGlasses" aria-pressed="true">Очки</button>
+    <button id="btnHat" aria-pressed="true">Шляпа</button>
+  </div>
+
+  <!--
+    mindar-face — режим face tracking.
+    Стабильность: MindAR сглаживает ключевые точки фильтром One Euro.
+      filterMinCF — минимальная частота среза: чем меньше, тем сильнее гасится дрожание,
+                    когда голова неподвижна (по умолчанию 0.001);
+      filterBeta  — насколько быстро фильтр «догоняет» быстрое движение: чем больше,
+                    тем меньше запаздывание при поворотах головы (по умолчанию 1).
+    Здесь дрожание гасится сильнее стандартного, а запаздывание при движении остаётся небольшим.
+    faceOccluder: true — MindAR добавляет невидимую сетку лица, которая перекрывает объекты за лицом.
+    uiScanning: no — вместо стандартной заставки поиска показываем свою плашку сверху.
+  -->
+  <a-scene
+    mindar-face="filterMinCF: 0.0001; filterBeta: 1.5; faceOccluder: true; uiScanning: no"
+    color-space="sRGB"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <!-- Освещение -->
+    <a-entity light="type: ambient; intensity: 0.8"></a-entity>
+    <a-entity light="type: directional; intensity: 2" position="0.5 1 1"></a-entity>
+
+    <a-camera active="false" position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!--
+      Система координат якоря MindAR:
+      1 единица = ширина лица (расстояние между точками 234 и 454, ~15 см),
+      X — вправо, Y — вверх, Z — от лица к камере.
+      Поэтому масштаб объектов подстраивается под размер лица автоматически:
+      и близко, и далеко от камеры очки остаются на глазах.
+    -->
+
+    <!-- Невидимая «голова»: эллипсоид за лицом. Привязан к точке 168 (переносица). -->
+    <a-entity mindar-face-target="anchorIndex: 168">
+      <a-sphere occluder radius="1" position="0 0.02 -0.5" scale="0.53 0.62 0.42"></a-sphere>
+    </a-entity>
+
+    <!--
+      ОЧКИ. Ключевая точка 168 — переносица между глазами.
+      Центры зрачков относительно неё (по канонической модели лица MediaPipe):
+      x = ±0.21, y = −0.045, z = −0.09. Оправа стоит чуть впереди глаз, на z = 0.01.
+      Модель собрана из примитивов: она симметричная и лёгкая, это даёт стабильный FPS.
+    -->
+    <a-entity mindar-face-target="anchorIndex: 168">
+      <a-entity id="glasses" position="0 -0.045 0.01">
+        <!-- Ободки линз -->
+        <a-torus position="-0.21 0 0" radius="0.15" radius-tubular="0.013" segments-radial="12" segments-tubular="48"
+                 scale="1.12 1 1" material="color: #1A1A1A; roughness: 0.4"></a-torus>
+        <a-torus position="0.21 0 0" radius="0.15" radius-tubular="0.013" segments-radial="12" segments-tubular="48"
+                 scale="1.12 1 1" material="color: #1A1A1A; roughness: 0.4"></a-torus>
+        <!-- Тонированные линзы -->
+        <a-circle position="-0.21 0 -0.003" radius="0.15" scale="1.12 1 1" segments="48"
+                  material="color: #A15C00; opacity: 0.35; transparent: true; side: double; metalness: 0.2; roughness: 0.1"></a-circle>
+        <a-circle position="0.21 0 -0.003" radius="0.15" scale="1.12 1 1" segments="48"
+                  material="color: #A15C00; opacity: 0.35; transparent: true; side: double; metalness: 0.2; roughness: 0.1"></a-circle>
+        <!-- Перемычка над переносицей (половина тора) -->
+        <a-torus position="0 0.02 0" radius="0.045" radius-tubular="0.011" arc="180"
+                 material="color: #C9A227; metalness: 0.9; roughness: 0.3"></a-torus>
+        <!-- Шарниры -->
+        <a-box position="-0.385 0.03 -0.01" width="0.04" height="0.035" depth="0.03"
+               material="color: #C9A227; metalness: 0.9; roughness: 0.3"></a-box>
+        <a-box position="0.385 0.03 -0.01" width="0.04" height="0.035" depth="0.03"
+               material="color: #C9A227; metalness: 0.9; roughness: 0.3"></a-box>
+        <!-- Дужки: идут назад к ушам и чуть расходятся. Их задняя часть прячется окклюдером головы -->
+        <a-box position="-0.43 0.03 -0.29" rotation="0 10 0" width="0.018" height="0.025" depth="0.56"
+               material="color: #1A1A1A; roughness: 0.4"></a-box>
+        <a-box position="0.43 0.03 -0.29" rotation="0 -10 0" width="0.018" height="0.025" depth="0.56"
+               material="color: #1A1A1A; roughness: 0.4"></a-box>
+      </a-entity>
+    </a-entity>
+
+    <!--
+      ШЛЯПА. Ключевая точка 10 — верх лба, линия роста волос.
+      Шляпа поднята над ней на 0.14 и сдвинута назад на 0.45, к центру головы,
+      и слегка наклонена назад, как её обычно носят.
+    -->
+    <a-entity mindar-face-target="anchorIndex: 10">
+      <a-entity id="hat" position="0 0.14 -0.45" rotation="-8 0 0">
+        <!-- Поля -->
+        <a-cylinder radius="0.66" height="0.02" scale="1 1 0.88" segments-radial="48"
+                    material="color: #2B3A55; roughness: 0.9"></a-cylinder>
+        <!-- Тулья -->
+        <a-cylinder position="0 0.24 0" radius="0.38" height="0.46" scale="1 1 0.85" segments-radial="48"
+                    material="color: #2B3A55; roughness: 0.9"></a-cylinder>
+        <!-- Лента -->
+        <a-cylinder position="0 0.07 0" radius="0.385" height="0.08" scale="1 1 0.85" segments-radial="48" open-ended="true"
+                    material="color: #C9A227; metalness: 0.6; roughness: 0.35; side: double"></a-cylinder>
+
+        <!-- Анимация: три звёздочки вращаются вокруг тульи и покачиваются -->
+        <a-entity position="0 0.3 0" animation="property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear">
+          <a-octahedron position="0.6 0 0" radius="0.045"
+                        material="color: #FFD45C; emissive: #C9A227; emissiveIntensity: 0.8"
+                        animation="property: position; from: 0.6 -0.05 0; to: 0.6 0.08 0; dir: alternate; loop: true; dur: 900; easing: easeInOutSine"></a-octahedron>
+          <a-octahedron position="-0.3 0 0.52" radius="0.035"
+                        material="color: #FFD45C; emissive: #C9A227; emissiveIntensity: 0.8"
+                        animation="property: position; from: -0.3 0.06 0.52; to: -0.3 -0.06 0.52; dir: alternate; loop: true; dur: 1100; easing: easeInOutSine"></a-octahedron>
+          <a-octahedron position="-0.3 0 -0.52" radius="0.04"
+                        material="color: #FFD45C; emissive: #C9A227; emissiveIntensity: 0.8"
+                        animation="property: position; from: -0.3 -0.04 -0.52; to: -0.3 0.07 -0.52; dir: alternate; loop: true; dur: 1000; easing: easeInOutSine"></a-octahedron>
+        </a-entity>
+      </a-entity>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const hud = document.getElementById('hud');
+    const statusEl = document.getElementById('status');
+    const sceneEl = document.querySelector('a-scene');
+
+    function setStatus(text, state) {
+      statusEl.textContent = text;
+      hud.dataset.state = state;
+      console.log('[MindAR Face]', text);
+    }
+
+    // События MindAR приходят на сцену
+    sceneEl.addEventListener('arReady', () => {
+      setStatus('Камера готова. Покажи лицо в кадр.', 'wait');
+      // Стандартный окклюдер лица MindAR тоже рисуем первым — по той же причине, что и наш
+      document.querySelectorAll('[mindar-face-default-face-occluder]').forEach((el) => {
+        el.object3D.traverse((o) => { if (o.isMesh) o.renderOrder = -1; });
+      });
+    });
+    sceneEl.addEventListener('arError', () => {
+      setStatus('Нет доступа к камере. Разреши его в настройках браузера.', 'error');
+    });
+    sceneEl.addEventListener('targetFound', () => {
+      setStatus('Лицо найдено.', 'found');
+    });
+    sceneEl.addEventListener('targetLost', () => {
+      setStatus('Лицо потеряно. Посмотри в камеру.', 'wait');
+    });
+
+    // Включение и выключение фильтров
+    function bindToggle(buttonId, entityId) {
+      const btn = document.getElementById(buttonId);
+      const entity = document.getElementById(entityId);
+      btn.addEventListener('click', () => {
+        const on = btn.getAttribute('aria-pressed') !== 'true';
+        btn.setAttribute('aria-pressed', String(on));
+        entity.setAttribute('visible', on);
+      });
+    }
+    bindToggle('btnGlasses', 'glasses');
+    bindToggle('btnHat', 'hat');
+  </script>
+</body>
+</html>

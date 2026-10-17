@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>ПР4 — AR-сцена на Three.js с hit-test</title>
+
+  <!-- Шрифт, как в задании 1. Если Google Fonts не загрузится, возьмётся системный -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #E3E7EC;
+      --ink: #18202A;
+      --muted: #5B6573;
+      --accent: #C9A227;
+      --panel: rgba(24, 32, 42, 0.78);
+      --light: #F4F1EA;
+    }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Manrope, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* Стартовый экран (до запуска AR) */
+    .page { max-width: 720px; margin: 0 auto; padding: 24px 16px 32px; }
+    h1 { margin: 0 0 6px; font-size: 26px; line-height: 1.2; }
+    .author { margin: 0 0 18px; color: var(--muted); }
+    #preview {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 20px;
+      background: #F2F4F7;
+    }
+    .start {
+      display: block;
+      width: 100%;
+      margin: 16px 0 10px;
+      padding: 14px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--ink);
+      color: var(--light);
+      font: 700 16px Manrope, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .start:disabled { opacity: 0.45; cursor: default; }
+    .status { display: flex; gap: 10px; align-items: flex-start; margin: 0; line-height: 1.45; }
+    .dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: #A15C00; }
+    [data-state="ok"] .dot { background: #1E7F4E; }
+    [data-state="error"] .dot { background: #B3261E; }
+    .nav { margin-top: 18px; display: flex; gap: 16px; }
+    .nav a { color: #8A6D0B; font-weight: 600; text-decoration: none; }
+
+    /* Интерфейс поверх камеры во время AR (WebXR DOM Overlay) */
+    #overlay { display: none; }
+    #overlay.active {
+      display: block;
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      font-family: Manrope, system-ui, sans-serif;
+    }
+    .hud {
+      position: absolute;
+      top: 12px; left: 12px; right: 12px;
+      display: flex; gap: 10px; align-items: center;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: var(--panel);
+      color: var(--light);
+      font-weight: 600; font-size: 14px; line-height: 1.35;
+    }
+    .hud .dot { margin-top: 0; }
+    .bar {
+      position: absolute;
+      left: 12px; right: 12px;
+      bottom: calc(20px + env(safe-area-inset-bottom));
+      display: flex; gap: 8px; justify-content: center;
+    }
+    .bar button {
+      pointer-events: auto;
+      padding: 10px 16px;
+      border: 2px solid var(--accent);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--light);
+      font: 600 14px Manrope, system-ui, sans-serif;
+    }
+  </style>
+
+  <!-- Three.js подключается как ES-модуль; importmap задаёт, откуда брать 'three' -->
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div class="page">
+    <h1>Практическая работа №4. AR-сцена на Three.js с hit-test</h1>
+    <p class="author">Кузнецова А.С., ИКБО-30-24</p>
+
+    <!-- Превью модели до запуска AR -->
+    <canvas id="preview"></canvas>
+
+    <button class="start" id="startBtn" disabled>Запустить AR</button>
+    <p class="status" id="status" data-state="wait">
+      <span class="dot"></span><span id="statusText">Проверяю поддержку WebXR…</span>
+    </p>
+
+    <div class="nav">
+      <a href="../">Задание 1</a>
+      <a href="../zadanie2/">Задание 2</a>
+      <a href="../zadanie3/">Задание 3</a>
+    </div>
+  </div>
+
+  <!-- Этот блок браузер показывает поверх камеры во время AR-сессии -->
+  <div id="overlay">
+    <div class="hud" id="hud" data-state="wait">
+      <span class="dot"></span><span id="hudText">Медленно поводи телефоном над полом</span>
+    </div>
+    <div class="bar">
+      <button id="clearBtn">Убрать всё</button>
+      <button id="exitBtn">Выйти</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // ---------- Элементы страницы ----------
+    const canvas = document.getElementById('preview');
+    const startBtn = document.getElementById('startBtn');
+    const statusBox = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const overlay = document.getElementById('overlay');
+    const hud = document.getElementById('hud');
+    const hudText = document.getElementById('hudText');
+
+    function setStatus(text, state) {
+      statusText.textContent = text;
+      statusBox.dataset.state = state;
+      console.log('[WebXR]', text);
+    }
+    function setHud(text, state) {
+      if (hudText.textContent === text) return;
+      hudText.textContent = text;
+      hud.dataset.state = state;
+    }
+
+    // ---------- Рендерер, сцена, свет ----------
+    // alpha: true — в AR фон прозрачный, сквозь него видно изображение с камеры
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    renderer.xr.enabled = true;
+
+    const scene = new THREE.Scene();
+    // Камера для превью; в AR её заменяет камера, которую ведёт WebXR по положению телефона
+    const camera = new THREE.PerspectiveCamera(50, 4 / 3, 0.01, 20);
+    camera.position.set(1.1, 1.0, 1.5);
+    camera.lookAt(0, 0.4, 0);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 2.2));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    const SUN_OFFSET = new THREE.Vector3(1, 3, 1.5);
+    sun.position.copy(SUN_OFFSET);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    // Область, в которой считается тень (±2 м вокруг цели света)
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -2;
+    sun.shadow.camera.right = sun.shadow.camera.top = 2;
+    scene.add(sun);
+    scene.add(sun.target);
+
+    // ---------- Модель: стул из примитивов, в реальном масштабе (единица = 1 метр) ----------
+    function createChair() {
+      const chair = new THREE.Group();
+      const wood = new THREE.MeshStandardMaterial({ color: 0xA9743F, roughness: 0.7 });
+      const fabric = new THREE.MeshStandardMaterial({ color: 0x2B3A55, roughness: 0.95 });
+      const add = (geometry, material, x, y, z) => {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        chair.add(mesh);
+        return mesh;
+      };
+      // Ножки: точка (0, 0, 0) модели находится на полу, поэтому стул стоит на найденной плоскости
+      const leg = new THREE.BoxGeometry(0.035, 0.45, 0.035);
+      for (const [x, z] of [[-0.19, -0.19], [0.19, -0.19], [-0.19, 0.19], [0.19, 0.19]]) {
+        add(leg, wood, x, 0.225, z);
+      }
+      add(new THREE.BoxGeometry(0.44, 0.04, 0.44), wood, 0, 0.47, 0);      // сиденье
+      add(new THREE.BoxGeometry(0.4, 0.035, 0.4), fabric, 0, 0.507, 0);    // подушка
+      const post = new THREE.BoxGeometry(0.035, 0.42, 0.035);              // стойки спинки
+      add(post, wood, -0.19, 0.7, -0.19);
+      add(post, wood, 0.19, 0.7, -0.19);
+      add(new THREE.BoxGeometry(0.42, 0.14, 0.03), fabric, 0, 0.82, -0.19); // спинка
+
+      // Мягкая тень на полу: плоскость, которая показывает только тень
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2, 1.2).rotateX(-Math.PI / 2),
+        new THREE.ShadowMaterial({ opacity: 0.3 })
+      );
+      shadow.receiveShadow = true;
+      shadow.position.y = 0.001;
+      chair.add(shadow);
+      return chair;
+    }
+
+    // Превью на стартовом экране
+    const preview = createChair();
+    scene.add(preview);
+
+    // ---------- Визуальный маркер (reticle) ----------
+    // Кольцо лежит в плоскости XZ, то есть «на полу» в системе координат результата hit-test.
+    // matrixAutoUpdate = false: матрицу маркера каждый кадр задаём сами из позы hit-test.
+    const reticle = new THREE.Group();
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.14, 48).rotateX(-Math.PI / 2), ringMaterial);
+    const pulse = new THREE.Mesh(
+      new THREE.RingGeometry(0.15, 0.16, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xC9A227, transparent: true })
+    );
+    reticle.add(ring, pulse);
+    scene.add(reticle);
+
+    const placed = []; // размещённые объекты
+
+    // ---------- Проверка поддержки ----------
+    async function checkSupport() {
+      if (!window.isSecureContext) {
+        setStatus('WebXR работает только по HTTPS. Открой страницу через GitHub Pages.', 'error');
+        return;
+      }
+      if (!('xr' in navigator)) {
+        const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        setStatus(iOS
+          ? 'Safari на iPhone не поддерживает WebXR. Открой страницу в Chrome на Android или на компьютере с WebXR-эмулятором.'
+          : 'Этот браузер не поддерживает WebXR. Нужен Chrome на Android или WebXR-эмулятор в браузере на компьютере.', 'error');
+        return;
+      }
+      const supported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (supported) {
+        startBtn.disabled = false;
+        setStatus('AR доступен. Нажми «Запустить AR».', 'ok');
+      } else {
+        setStatus('immersive-ar на этом устройстве не поддерживается. Нужен Chrome на Android с ARCore.', 'error');
+      }
+    }
+    checkSupport();
+
+    // ---------- Запуск AR-сессии ----------
+    let hitTestSource = null;
+    let referenceSpace = null;
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        // 1. Запрашиваем сессию immersive-ar.
+        //    hit-test — обязательная функция: без неё работа не имеет смысла.
+        //    local-floor и dom-overlay — желательные: если устройство их не даёт, сессия всё равно запустится.
+        const session = await navigator.xr.requestSession('immersive-ar', {
+          requiredFeatures: ['hit-test'],
+          optionalFeatures: ['local-floor', 'dom-overlay'],
+          domOverlay: { root: overlay }
+        });
+
+        // 2. Выбираем систему отсчёта: local-floor (начало координат на уровне пола),
+        //    если устройство её не поддерживает — local (начало там, где был телефон при старте).
+        let spaceType = 'local-floor';
+        try {
+          await session.requestReferenceSpace('local-floor');
+        } catch (e) {
+          spaceType = 'local';
+        }
+        renderer.xr.setReferenceSpaceType(spaceType);
+        await renderer.xr.setSession(session);
+        referenceSpace = renderer.xr.getReferenceSpace();
+        console.log('[WebXR] reference space:', spaceType);
+
+        // 3. Источник hit-test: луч идёт из центра экрана (пространство 'viewer' — сам телефон)
+        const viewerSpace = await session.requestReferenceSpace('viewer');
+        hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+
+        overlay.classList.add('active');
+        preview.visible = false;
+        setHud('Медленно поводи телефоном над полом', 'wait');
+
+        session.addEventListener('end', onSessionEnd);
+      } catch (err) {
+        console.error(err);
+        setStatus('Не удалось запустить AR: ' + err.message, 'error');
+      }
+    });
+
+    function onSessionEnd() {
+      if (hitTestSource) hitTestSource.cancel();
+      hitTestSource = null;
+      referenceSpace = null;
+      reticle.visible = false;
+      clearPlaced();
+      overlay.classList.remove('active');
+      preview.visible = true;
+      sun.target.position.set(0, 0, 0);
+      sun.position.copy(SUN_OFFSET);
+      resizePreview();
+      setStatus('AR-сессия завершена. Можно запустить снова.', 'ok');
+    }
+
+    // ---------- Размещение по тапу ----------
+    // Контроллер 0 в AR на телефоне — это касание экрана; событие select = тап
+    const controller = renderer.xr.getController(0);
+    controller.addEventListener('select', onSelect);
+    scene.add(controller);
+
+    const tmpPos = new THREE.Vector3();
+    const tmpQuat = new THREE.Quaternion();
+    const tmpScale = new THREE.Vector3();
+    const camPos = new THREE.Vector3();
+    const up = new THREE.Vector3();
+
+    function surfaceIsHorizontal() {
+      // Вторая колонка матрицы маркера — нормаль найденной поверхности.
+      // Если она смотрит вверх, это пол или стол, а не стена.
+      up.setFromMatrixColumn(reticle.matrix, 1);
+      return up.y > 0.8;
+    }
+
+    function onSelect() {
+      if (!reticle.visible || !surfaceIsHorizontal()) return;
+
+      const chair = createChair();
+      // Берём точку касания из матрицы маркера (координаты в referenceSpace)
+      reticle.matrix.decompose(tmpPos, tmpQuat, tmpScale);
+      chair.position.copy(tmpPos);
+      // Разворачиваем стул сиденьем к пользователю (поворот только вокруг вертикали)
+      renderer.xr.getCamera().getWorldPosition(camPos);
+      chair.rotation.y = Math.atan2(camPos.x - tmpPos.x, camPos.z - tmpPos.z);
+
+      // Короткая анимация появления
+      chair.scale.setScalar(0.01);
+      chair.userData.born = performance.now();
+
+      // Объект добавляется в сцену, а не к камере: его координаты заданы в системе отсчёта
+      // мира (referenceSpace), поэтому при движении телефона он остаётся на месте.
+      scene.add(chair);
+      placed.push(chair);
+
+      // Направленный свет «переезжает» к последнему стулу, чтобы тень попадала в его область
+      sun.target.position.copy(tmpPos);
+      sun.position.copy(tmpPos).add(SUN_OFFSET);
+    }
+
+    function clearPlaced() {
+      for (const obj of placed) scene.remove(obj);
+      placed.length = 0;
+    }
+
+    // Нажатия на кнопки поверх камеры не должны ставить стул
+    overlay.addEventListener('beforexrselect', (e) => e.preventDefault());
+    document.getElementById('clearBtn').addEventListener('click', clearPlaced);
+    document.getElementById('exitBtn').addEventListener('click', () => {
+      const session = renderer.xr.getSession();
+      if (session) session.end();
+    });
+
+    // ---------- Размер превью ----------
+    function resizePreview() {
+      if (renderer.xr.isPresenting) return;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resizePreview);
+    resizePreview();
+
+    // ---------- Цикл отрисовки ----------
+    // В AR цикл вызывается браузером синхронно с камерой, frame — текущий XRFrame
+    renderer.setAnimationLoop((time, frame) => {
+      if (frame && hitTestSource) {
+        // Результаты hit-test для текущего кадра: пересечения луча с реальными поверхностями
+        const results = frame.getHitTestResults(hitTestSource);
+        if (results.length > 0) {
+          // Поза ближайшей поверхности в нашей системе отсчёта
+          const pose = results[0].getPose(referenceSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(pose.transform.matrix);
+
+          if (surfaceIsHorizontal()) {
+            ringMaterial.color.set(0xffffff);
+            setHud('Поверхность найдена. Нажми на экран, чтобы поставить стул.', 'ok');
+          } else {
+            ringMaterial.color.set(0xB3261E);
+            setHud('Это стена. Наведи на пол или стол.', 'wait');
+          }
+        } else {
+          reticle.visible = false;
+          setHud('Ищу поверхность… Медленно поводи телефоном над полом.', 'wait');
+        }
+
+        // Пульсация внешнего кольца маркера
+        const k = (time % 1200) / 1200;
+        pulse.scale.setScalar(1 + k * 0.5);
+        pulse.material.opacity = 1 - k;
+      } else {
+        // Превью: стул медленно вращается
+        preview.rotation.y = time * 0.0004;
+      }
+
+      // Анимация появления размещённых стульев (~250 мс)
+      for (const obj of placed) {
+        const t = Math.min((performance.now() - obj.userData.born) / 250, 1);
+        obj.scale.setScalar(1 - Math.pow(1 - t, 3));
+      }
+
+      renderer.render(scene, camera);
+    });
+  </script>
+</body>
+</html>
