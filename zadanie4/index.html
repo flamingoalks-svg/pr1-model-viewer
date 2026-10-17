@@ -340,10 +340,14 @@
     }
 
     // ---------- Размещение по тапу ----------
-    // Контроллер 0 в AR на телефоне — это касание экрана; событие select = тап
-    const controller = renderer.xr.getController(0);
-    controller.addEventListener('select', onSelect);
-    scene.add(controller);
+    // Контроллер 0 в AR на телефоне — это касание экрана; событие select = тап.
+    // Контроллер 1 нужен для шлемов и эмулятора (Quest): там два контроллера, и курок
+    // может быть нажат на любом из них.
+    for (const i of [0, 1]) {
+      const controller = renderer.xr.getController(i);
+      controller.addEventListener('select', onSelect);
+      scene.add(controller);
+    }
 
     const tmpPos = new THREE.Vector3();
     const tmpQuat = new THREE.Quaternion();
