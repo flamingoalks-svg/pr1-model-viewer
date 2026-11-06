@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>ПР5 — Управление объектом, HDRI и UI в AR</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+
+  <!-- Three.js и его дополнения (GLTFLoader, RGBELoader, OrbitControls) как ES-модули -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="page">
+    <nav class="tasks" aria-label="Переключение между заданиями">
+      <span>Задания</span>
+      <a href="../">1</a>
+      <a href="../zadanie2/">2</a>
+      <a href="../zadanie3/">3</a>
+      <a href="../zadanie4/">4</a>
+      <a href="../zadanie5/" aria-current="page">5</a>
+    </nav>
+    <h1>Практическая работа №5. Управление объектом, HDRI и UI в AR</h1>
+    <p class="author">Кузнецова А.С., ИКБО-30-24</p>
+
+    <canvas id="preview"></canvas>
+
+    <button class="start" id="startBtn" disabled>Запустить AR</button>
+    <p class="status" id="status" data-state="wait">
+      <span class="dot"></span><span id="statusText">Загрузка…</span>
+    </p>
+
+    <!--
+      Корень DOM Overlay. До AR это обычный блок под превью,
+      во время AR браузер показывает его поверх камеры.
+    -->
+    <div id="overlay">
+      <div class="hud ar-only" id="hud" data-state="wait">
+        <span class="dot"></span><span id="hudText">Медленно поводи телефоном над полом</span>
+      </div>
+
+      <section class="panel" id="panel" aria-label="Управление объектом">
+        <div class="panel-head">
+          <span id="targetText">Превью</span>
+          <button class="ghost" id="collapseBtn">Скрыть</button>
+        </div>
+
+        <div class="panel-body">
+          <label class="row">
+            <span class="label">Модель</span>
+            <select id="modelSelect"></select>
+          </label>
+
+          <div class="row">
+            <span class="label">Цвет</span>
+            <div class="swatches" id="swatches"></div>
+          </div>
+
+          <div class="row">
+            <span class="label">Поворот</span>
+            <div class="buttons">
+              <button id="rotLeft" title="Удерживай, чтобы вращать">⟲ влево</button>
+              <button id="rotRight" title="Удерживай, чтобы вращать">вправо ⟳</button>
+            </div>
+          </div>
+
+          <label class="row">
+            <span class="label">Шероховатость</span>
+            <input type="range" id="roughness" min="0" max="1" step="0.01">
+            <output id="roughnessVal">0.00</output>
+          </label>
+          <label class="row">
+            <span class="label">Металличность</span>
+            <input type="range" id="metalness" min="0" max="1" step="0.01">
+            <output id="metalnessVal">0.00</output>
+          </label>
+
+          <div class="row actions">
+            <label class="check"><input type="checkbox" id="hdriToggle" checked> HDRI</label>
+            <button id="resetBtn">Сброс</button>
+            <button id="deleteBtn" class="ar-only">Удалить</button>
+            <button id="exitBtn" class="ar-only">Выйти</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <p class="credits">
+      Модели: Sheen Chair (© 2020 Wayfair, CC0), Chair Damask Purplegold и Glam Velvet Sofa
+      (© 2021 Wayfair, CC BY 4.0) из набора
+      <a href="https://github.com/KhronosGroup/glTF-Sample-Assets">Khronos glTF Sample Assets</a>.
+    </p>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

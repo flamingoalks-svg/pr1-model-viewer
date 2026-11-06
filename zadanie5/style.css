@@ -1,0 +1,117 @@
+:root {
+  --bg: #E3E7EC;
+  --ink: #18202A;
+  --muted: #5B6573;
+  --accent: #C9A227;
+  --panel: rgba(24, 32, 42, 0.82);
+  --light: #F4F1EA;
+}
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Manrope, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------- Стартовая страница ---------- */
+.page { max-width: 720px; margin: 0 auto; padding: 24px 16px 32px; }
+h1 { margin: 0 0 6px; font-size: 26px; line-height: 1.2; }
+.author { margin: 0 0 18px; color: var(--muted); }
+
+/* Переключатель заданий (как на остальных страницах) */
+.tasks {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-bottom: 16px; padding: 4px 4px 4px 12px;
+  border-radius: 999px; background: rgba(24, 32, 42, 0.07);
+  font-size: 14px; font-weight: 600;
+}
+.tasks span { margin-right: 6px; color: #5A6573; }
+.tasks a {
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border-radius: 50%; color: #18202A; text-decoration: none;
+}
+.tasks a[aria-current="page"] { background: #18202A; color: #F4F1EA; }
+
+#preview {
+  display: block; width: 100%; aspect-ratio: 4 / 3;
+  border-radius: 20px; background: #F2F4F7; touch-action: none;
+}
+.start {
+  display: block; width: 100%; margin: 16px 0 10px; padding: 14px;
+  border: 0; border-radius: 14px; background: var(--ink); color: var(--light);
+  font: 700 16px Manrope, system-ui, sans-serif; cursor: pointer;
+}
+.start:disabled { opacity: 0.45; cursor: default; }
+.status { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; line-height: 1.45; }
+.dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: #A15C00; }
+[data-state="ok"] .dot { background: #1E7F4E; }
+[data-state="error"] .dot { background: #B3261E; }
+.credits { margin-top: 18px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.credits a { color: #8A6D0B; }
+
+/* ---------- Панель управления ---------- */
+.panel {
+  border-radius: 18px; background: var(--panel); color: var(--light);
+  padding: 12px 14px; font-size: 14px; font-weight: 600;
+}
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.panel-body { margin-top: 10px; display: grid; gap: 10px; }
+.panel.collapsed .panel-body { display: none; }
+.row { display: flex; align-items: center; gap: 10px; }
+.label { flex: none; width: 112px; opacity: 0.75; font-weight: 600; }
+.panel select {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid rgba(244, 241, 234, 0.25); background: #222C38; color: var(--light);
+  font: 600 14px Manrope, system-ui, sans-serif;
+}
+.panel input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.panel output { flex: none; width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+.panel button {
+  padding: 8px 12px; border: 2px solid var(--accent); border-radius: 999px;
+  background: transparent; color: var(--light);
+  font: 600 14px Manrope, system-ui, sans-serif; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.panel button:disabled { opacity: 0.35; cursor: default; }
+.panel button.ghost { border-color: rgba(244, 241, 234, 0.3); padding: 4px 10px; font-size: 13px; }
+.buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel .swatch {
+  width: 30px; height: 30px; padding: 0; border-radius: 50%;
+  border: 2px solid rgba(244, 241, 234, 0.35);
+}
+.panel .swatch[aria-pressed="true"] { border-color: var(--light); box-shadow: 0 0 0 2px var(--accent); }
+.panel .swatch-original {
+  background: linear-gradient(135deg, #F4F1EA 45%, #B3261E 45%, #B3261E 55%, #F4F1EA 55%);
+}
+.actions { flex-wrap: wrap; }
+.check { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
+.check input { accent-color: var(--accent); width: 18px; height: 18px; }
+
+.ar-only { display: none !important; }
+
+/* ---------- AR-режим: панель поверх камеры ---------- */
+body.xr-active #preview { background: transparent; border-radius: 0; }
+#overlay.active {
+  position: fixed; inset: 0;
+  pointer-events: none; /* касания мимо панели проходят в сцену и ставят объект */
+}
+#overlay.active .ar-only { display: flex !important; }
+#overlay.active button.ar-only { display: inline-block !important; }
+#overlay.active .hud {
+  position: absolute; top: 12px; left: 12px; right: 12px;
+  align-items: center; gap: 10px; padding: 10px 14px;
+  border-radius: 14px; background: var(--panel); color: var(--light);
+  font-size: 14px; font-weight: 600; line-height: 1.35;
+  pointer-events: auto;
+}
+#overlay.active .hud .dot { margin-top: 0; }
+#overlay.active .panel {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  max-width: 520px; margin: 0 auto;
+  pointer-events: auto;
+}
+@media (max-width: 420px) {
+  .label { width: 92px; }
+}
